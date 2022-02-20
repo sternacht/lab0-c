@@ -1,9 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "harness.h"
 #include "queue.h"
+#include "queue_expansion.h"
+
+#define likely(x) __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
 
 /* Notice: sometimes, Cppcheck would find the potential NULL pointer bugs,
  * but some of them cannot occur. You can suppress them by adding the
@@ -192,9 +197,9 @@ bool q_delete_mid(struct list_head *head)
  */
 bool q_delete_dup(struct list_head *head)
 {
-    if (!head || list_empty(head))
+    if (!head)
         return false;
-    if (list_is_singular(head))
+    if (list_empty(head) || list_is_singular(head))
         return true;
     struct list_head *node = head->next;
     struct list_head *del_q = q_new();
@@ -271,28 +276,235 @@ void q_reverse(struct list_head *head)
  * No effect if q is NULL or empty. In addition, if q has only one
  * element, do nothing.
  */
+/*
+struct list_head *q_mergesort(struct list_head *head);
+struct list_head *q_merge(struct list_head *head, struct list_head *tail);
+struct list_head *q_split(struct list_head *head);
+int cmp(struct list_head *a, struct list_head *b);
+
 void q_sort(struct list_head *head)
 {
     if (!head || list_empty(head) || list_is_singular(head))
         return;
-    int len = q_size(head);
-    element_t *entry1 = NULL, *entry2 = NULL;
-    for (int i = 1; i < len; i++) {
-        // cppcheck-suppress nullPointer
-        entry1 = list_entry(head->next, element_t, list);
-        for (int j = i; j < len; j++) {
-            // cppcheck-suppress nullPointer
-            entry2 = list_entry((&entry1->list)->next, element_t, list);
-            if (strcmp(entry1->value, entry2->value) > 0) {
-                (&entry1->list)->prev->next = &(entry2->list);
-                (&entry2->list)->next->prev = &(entry1->list);
-                (&entry1->list)->next = (&entry2->list)->next;
-                (&entry2->list)->prev = (&entry1->list)->prev;
-                (&entry1->list)->prev = (&entry2->list);
-                (&entry2->list)->next = (&entry1->list);
-            } else {
-                entry1 = entry2;
+    head->prev->next = NULL;
+    head->next = q_mergesort(head->next);
+    head->next->prev = head;
+    struct list_head *node = head->next;
+    while (node->next) {
+        node = node->next;
+    }
+    node->next = head;
+    head->prev = node;
+}
+
+struct list_head *q_mergesort(struct list_head *head)
+{
+    if (!head || !head->next)
+        return head;
+    struct list_head *tail = q_split(head);
+    head = q_mergesort(head);
+    tail = q_mergesort(tail);
+    return q_merge(head, tail);
+}
+
+struct list_head *q_merge(struct list_head *head, struct list_head *tail)
+{
+    if (!head)
+        return (tail);
+    if (!tail)
+        return (head);
+    if (cmp(head, tail) > 0) {
+        tail->next = q_merge(head, tail->next);
+        tail->next->prev = tail;
+        tail->prev = NULL;
+        return tail;
+    } else {
+        head->next = q_merge(head->next, tail);
+        head->next->prev = head;
+        head->prev = NULL;
+        return head;
+    }
+}
+
+struct list_head *q_split(struct list_head *head)
+{
+    struct list_head *slow = head;
+    for (struct list_head *fast = head->next; fast && fast->next;
+         fast = fast->next->next) {
+        slow = slow->next;
+    }
+    struct list_head *tmp = slow->next;
+    slow->next = NULL;
+    return tmp;
+}
+
+int cmp(struct list_head *a, struct list_head *b)
+{
+    element_t *entry1 = list_entry(a, element_t, list);
+    element_t *entry2 = list_entry(b, element_t, list);
+    return strcmp(entry1->value, entry2->value);
+}
+*/
+
+int cmp(struct list_head *a, struct list_head *b);
+static struct list_head *merge(struct list_head *a, struct list_head *b);
+static void merge_final(struct list_head *head,
+                        struct list_head *a,
+                        struct list_head *b);
+
+void q_sort(struct list_head *head)
+{
+    // this function is rewrite from list_sort.c
+    if (!head || list_empty(head) || list_is_singular(head))
+        return;
+    struct list_head *list = head->next, *pending = NULL;
+    size_t count = 0;
+    head->prev->next = NULL;
+    do {
+        size_t bits;
+        struct list_head **tail = &pending;
+        for (bits = count; bits & 1; bits >>= 1)
+            tail = &(*tail)->prev;
+        if (likely(bits)) {
+            struct list_head *a = *tail, *b = a->prev;
+            a = merge(b, a);
+            a->prev = b->prev;
+            *tail = a;
+        }
+        list->prev = pending;
+        pending = list;
+        list = list->next;
+        pending->next = NULL;
+        count++;
+    } while (list);
+    list = pending;
+    pending = pending->prev;
+    for (;;) {
+        struct list_head *next = pending->prev;
+        if (!next)
+            break;
+        list = merge(pending, list);
+        pending = next;
+    }
+    merge_final(head, pending, list);
+}
+
+
+int cmp(struct list_head *a, struct list_head *b)
+{
+    // cppcheck-suppress nullPointer
+    element_t *entry1 = list_entry(a, element_t, list);
+    // cppcheck-suppress nullPointer
+    element_t *entry2 = list_entry(b, element_t, list);
+    return strcmp(entry1->value, entry2->value);
+}
+
+static struct list_head *merge(struct list_head *a, struct list_head *b)
+{
+    struct list_head *head = NULL, **tail = &head;
+    for (;;) {
+        if (cmp(a, b) <= 0) {
+            *tail = a;
+            tail = &a->next;
+            a = a->next;
+            if (!a) {
+                *tail = b;
+                break;
+            }
+        } else {
+            *tail = b;
+            tail = &b->next;
+            b = b->next;
+            if (!b) {
+                *tail = a;
+                break;
             }
         }
+    }
+    return head;
+}
+
+static void merge_final(struct list_head *head,
+                        struct list_head *a,
+                        struct list_head *b)
+{
+    struct list_head *tail = head;
+    int count = 0;
+    for (;;) {
+        if (cmp(a, b) <= 0) {
+            tail->next = a;
+            a->prev = tail;
+            tail = a;
+            a = a->next;
+            if (!a)
+                break;
+        } else {
+            tail->next = b;
+            b->prev = tail;
+            tail = b;
+            b = b->next;
+            if (!b) {
+                b = a;
+                break;
+            }
+        }
+    }
+    tail->next = b;
+    do {
+        if (unlikely(!++count))
+            cmp(b, b);
+        b->prev = tail;
+        tail = b;
+        b = b->next;
+    } while (b);
+    tail->next = head;
+    head->prev = tail;
+}
+
+/*
+void swap_two_node(struct list_head *a, struct list_head *b)
+{
+    if (a->next == b) {
+        a->prev->next = b;
+        b->next->prev = a;
+        a->next = b->next;
+        b->prev = a->prev;
+        a->prev = b;
+        b->next = a;
+    } else {
+        struct list_head *tmp;
+        a->prev->next = b;
+        b->prev->next = a;
+        tmp = a->prev;
+        a->prev = b->prev;
+        b->prev = tmp;
+        a->next->prev = b;
+        b->next->prev = a;
+        tmp = a->next;
+        a->next = b->next;
+        b->next = tmp;
+    }
+}
+*/
+
+void q_shuffle(struct list_head *head)
+{
+    if (!head || list_empty(head) || list_is_singular(head))
+        return;
+    srand(time(0));
+    int len = q_size(head);
+    struct list_head *tail = head, *node = NULL;
+    for (; len > 1; len--) {
+        node = head->next;
+        for (int i = rand() % len; i > 0; i--) {
+            node = node->next;
+        }
+        // swap_two_node(node, tail);
+        list_del(node);
+        node->prev = tail->prev;
+        node->prev->next = node;
+        tail->prev = node;
+        node->next = tail;
+        tail = node;
     }
 }
