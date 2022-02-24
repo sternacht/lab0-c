@@ -113,7 +113,7 @@ element_t *q_remove_head(struct list_head *head, char *sp, size_t bufsize)
     // cppcheck-suppress nullPointer
     element_t *remove = list_entry(head->next, element_t, list);
     if (sp != NULL) {
-        strncpy(sp, remove->value, bufsize);
+        strncpy(sp, remove->value, bufsize - 1);
         sp[bufsize - 1] = '\0';
     }
     list_del_init(&(remove->list));
@@ -235,19 +235,14 @@ void q_swap(struct list_head *head)
 {
     if (!head || list_empty(head))
         return;
-    struct list_head *lnode = head->next;
-    struct list_head *rnode = lnode->next;
-    int len = q_size(head);
-    while (len > 1) {
-        lnode->prev->next = rnode;
-        rnode->next->prev = lnode;
-        lnode->next = rnode->next;
-        rnode->prev = lnode->prev;
-        lnode->prev = rnode;
-        rnode->next = lnode;
-        lnode = lnode->next;
-        rnode = lnode->next;
-        len -= 2;
+    struct list_head *node = NULL, *safe = NULL;
+    bool lock = false;
+    list_for_each_safe (node, safe, head) {
+        if (lock) {
+            list_del(node);
+            list_add(node, safe->prev->prev);
+        }
+        lock = !lock;
     }
     return;
 }
@@ -276,13 +271,15 @@ void q_reverse(struct list_head *head)
  * No effect if q is NULL or empty. In addition, if q has only one
  * element, do nothing.
  */
+
+// recursive mergesort
 /*
 struct list_head *q_mergesort(struct list_head *head);
 struct list_head *q_merge(struct list_head *head, struct list_head *tail);
 struct list_head *q_split(struct list_head *head);
 int cmp(struct list_head *a, struct list_head *b);
 
-void q_sort(struct list_head *head)
+void q_msort(struct list_head *head)
 {
     if (!head || list_empty(head) || list_is_singular(head))
         return;
@@ -346,6 +343,7 @@ int cmp(struct list_head *a, struct list_head *b)
 }
 */
 
+
 int cmp(struct list_head *a, struct list_head *b);
 static struct list_head *merge(struct list_head *a, struct list_head *b);
 static void merge_final(struct list_head *head,
@@ -389,7 +387,7 @@ void q_sort(struct list_head *head)
     merge_final(head, pending, list);
 }
 
-
+/*
 int cmp(struct list_head *a, struct list_head *b)
 {
     // cppcheck-suppress nullPointer
@@ -398,6 +396,7 @@ int cmp(struct list_head *a, struct list_head *b)
     element_t *entry2 = list_entry(b, element_t, list);
     return strcmp(entry1->value, entry2->value);
 }
+*/
 
 static struct list_head *merge(struct list_head *a, struct list_head *b)
 {
@@ -461,31 +460,6 @@ static void merge_final(struct list_head *head,
     head->prev = tail;
 }
 
-/*
-void swap_two_node(struct list_head *a, struct list_head *b)
-{
-    if (a->next == b) {
-        a->prev->next = b;
-        b->next->prev = a;
-        a->next = b->next;
-        b->prev = a->prev;
-        a->prev = b;
-        b->next = a;
-    } else {
-        struct list_head *tmp;
-        a->prev->next = b;
-        b->prev->next = a;
-        tmp = a->prev;
-        a->prev = b->prev;
-        b->prev = tmp;
-        a->next->prev = b;
-        b->next->prev = a;
-        tmp = a->next;
-        a->next = b->next;
-        b->next = tmp;
-    }
-}
-*/
 
 void q_shuffle(struct list_head *head)
 {
@@ -499,12 +473,8 @@ void q_shuffle(struct list_head *head)
         for (int i = rand() % len; i > 0; i--) {
             node = node->next;
         }
-        // swap_two_node(node, tail);
         list_del(node);
-        node->prev = tail->prev;
-        node->prev->next = node;
-        tail->prev = node;
-        node->next = tail;
+        list_add(node, tail->prev);
         tail = node;
     }
 }
