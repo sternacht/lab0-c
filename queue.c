@@ -387,7 +387,6 @@ void q_sort(struct list_head *head)
     merge_final(head, pending, list);
 }
 
-/*
 int cmp(struct list_head *a, struct list_head *b)
 {
     // cppcheck-suppress nullPointer
@@ -396,7 +395,6 @@ int cmp(struct list_head *a, struct list_head *b)
     element_t *entry2 = list_entry(b, element_t, list);
     return strcmp(entry1->value, entry2->value);
 }
-*/
 
 static struct list_head *merge(struct list_head *a, struct list_head *b)
 {
