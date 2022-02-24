@@ -5,7 +5,6 @@
 
 #include "harness.h"
 #include "queue.h"
-#include "queue_expansion.h"
 
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
@@ -456,23 +455,4 @@ static void merge_final(struct list_head *head,
     } while (b);
     tail->next = head;
     head->prev = tail;
-}
-
-
-void q_shuffle(struct list_head *head)
-{
-    if (!head || list_empty(head) || list_is_singular(head))
-        return;
-    srand(time(0));
-    int len = q_size(head);
-    struct list_head *tail = head, *node = NULL;
-    for (; len > 1; len--) {
-        node = head->next;
-        for (int i = rand() % len; i > 0; i--) {
-            node = node->next;
-        }
-        list_del(node);
-        list_add(node, tail->prev);
-        tail = node;
-    }
 }

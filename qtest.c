@@ -33,7 +33,6 @@
  */
 #include "console.h"
 #include "queue.h"
-#include "queue_expansion.h"
 #include "report.h"
 
 /* Settable parameters */
@@ -680,6 +679,24 @@ static bool do_swap(int argc, char *argv[])
 
     show_queue(3);
     return !error_check();
+}
+
+void q_shuffle(struct list_head *head)
+{
+    if (!head || list_empty(head) || list_is_singular(head))
+        return;
+    srand(time(0));
+    int len = q_size(head);
+    struct list_head *tail = head, *node = NULL;
+    for (; len > 1; len--) {
+        node = head->next;
+        for (int i = rand() % len; i > 0; i--) {
+            node = node->next;
+        }
+        list_del(node);
+        list_add(node, tail->prev);
+        tail = node;
+    }
 }
 
 static bool do_shuffle(int argc, char *argv[])
